@@ -5,6 +5,8 @@ local ThemeManager = {
     Library = nil,
     Folder = "KronexThemes",
     CurrentTheme = "Default",
+    
+    -- Пресеты цветовых схем
     Themes = {
         ["Default"] = {
             MainBackground = Color3.fromRGB(12, 11, 14),
@@ -43,35 +45,52 @@ local ThemeManager = {
             ElementsBackground = Color3.fromRGB(210, 210, 220)
         }
     },
-    Objects = {} -- Сюда библиотека будет регистрировать элементы для динамической смены тем
+    
+    -- Список всех отслеживаемых GUI-элементов
+    Objects = {}
 }
 
--- Инициализация менеджера тем, связка с основной библиотекой
+-- Инициализация менеджера и привязка к ядру библиотеки
 function ThemeManager:Init(lib)
     self.Library = lib
     
-    -- Создаем папку для сохранений, если её нет
+    -- Безопасное создание корневой папки для тем в директории эксплоита
     if makefolder and not isfolder(self.Folder) then
         makefolder(self.Folder)
     end
 end
 
--- Регистрация объекта для автоматического изменения цвета
+-- Регистрация GUI-объекта в таблице отслеживания тем
+-- instance: ссылка на элемент (Frame, TextLabel и т.д.)
+-- propType: строка свойства (например, "BackgroundColor3", "TextColor3")
+-- themeKey: ключ из таблицы темы (например, "Accent", "MainBackground")
 function ThemeManager:RegisterObject(instance, propType, themeKey)
-    table.insert(self.Objects, {
+    local objectData = {
         Instance = instance,
-        Property = propType, -- "BackgroundColor3", "TextColor3", "ImageColor3"
+        Property = propType,
         Key = themeKey
-    })
+    }
     
-    -- Сразу применяем текущий цвет
-    local currentTheme = self.Themes[self.CurrentTheme]
-    if currentTheme and currentTheme[themeKey] then
-        instance[propType] = currentTheme[themeKey]
+    table.insert(self.Objects, objectData)
+    
+    -- Сразу красим объект в текущую активную тему
+    local activeTheme = self.Themes[self.CurrentTheme]
+    if activeTheme and activeTheme[themeKey] then
+        instance[propType] = activeTheme[themeKey]
     end
+    
+    -- Автоматическая очистка при удалении объекта из игры (чтобы не забивать память)
+    instance.Destroying:Connect(function()
+        for idx, obj in ipairs(self.Objects) do
+            if obj.Instance == instance then
+                table.remove(self.Objects, idx)
+                break
+            end
+        end
+    end)
 end
 
--- Применение темы с плавным твином для всех зарегистрированных объектов
+-- Динамическое переключение темы на лету с плавными анимациями
 function ThemeManager:ApplyTheme(themeName)
     if not self.Themes[themeName] then return end
     self.CurrentTheme = themeName
@@ -81,7 +100,7 @@ function ThemeManager:ApplyTheme(themeName)
         if obj.Instance and obj.Instance.Parent then
             local targetColor = themeData[obj.Key]
             if targetColor then
-                TweenService:Create(obj.Instance, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                TweenService:Create(obj.Instance, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                     [obj.Property] = targetColor
                 }):Play()
             end
@@ -89,43 +108,53 @@ function ThemeManager:ApplyTheme(themeName)
     end
 end
 
--- Сохранение текущей темы в файл конфигурации
+-- Сохранение настроек в JSON-конфиг
 function ThemeManager:SaveTheme(profileName)
     if not writefile then return end
     profileName = profileName or "default_theme"
     
-    local data = {
+    -- Сериализуем кастомную тему (если пользователь менял ползунки вручную)
+    local serializedCustom = nil
+    if self.Themes["Custom"] then
+        serializedCustom = {}
+        for k, color in pairs(self.Themes["Custom"]) do
+            serializedCustom[k] = {R = color.R, G = color.G, B = color.B}
+        end
+    end
+    
+    local configData = {
         SelectedTheme = self.CurrentTheme,
-        CustomTheme = self.Themes["Custom"]
+        CustomTheme = serializedCustom
     }
     
-    local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
+    local success, encoded = pcall(HttpService.JSONEncode, HttpService, configData)
     if success then
         writefile(self.Folder .. "/" .. profileName .. ".json", encoded)
     end
 end
 
--- Загрузка сохраненной темы
+-- Загрузка и парсинг JSON-конфига с диска
 function ThemeManager:LoadTheme(profileName)
     if not readfile then return end
     profileName = profileName or "default_theme"
-    local path = self.Folder .. "/" .. profileName .. ".json"
+    local filePath = self.Folder .. "/" .. profileName .. ".json"
     
-    if isfile(path) then
-        local content = readfile(path)
+    if isfile(filePath) then
+        local content = readfile(filePath)
         local success, decoded = pcall(HttpService.JSONDecode, HttpService, content)
         
         if success and decoded then
+            -- Восстанавливаем кастомные Color3 из сохраненных RGB-таблиц
             if decoded.CustomTheme then
-                -- Восстанавливаем кастомные цвета из Color3 значений (JSON не сохраняет userdata напрямую)
                 self.Themes["Custom"] = {}
-                for k, v in pairs(decoded.CustomTheme) do
-                    if type(v) == "table" and v.R then
-                        self.Themes["Custom"][k] = Color3.new(v.R, v.G, v.B)
+                for k, rgb in pairs(decoded.CustomTheme) do
+                    if type(rgb) == "table" and rgb.R then
+                        self.Themes["Custom"][k] = Color3.new(rgb.R, rgb.G, rgb.B)
                     end
                 end
             end
             
+            -- Применяем сохраненный пресет
             if decoded.SelectedTheme and self.Themes[decoded.SelectedTheme] then
                 self:ApplyTheme(decoded.SelectedTheme)
             end
@@ -133,28 +162,38 @@ function ThemeManager:LoadTheme(profileName)
     end
 end
 
--- Создание готового UI-дропдауна или элементов управления в вашей вкладке настроек
+-- Генерация кнопок выбора темы прямо внутри указанного Groupbox
 function ThemeManager:BuildThemeSection(tabObject)
     local Group = tabObject:AddGroupbox("Theme Settings")
     
-    -- Получаем список имен тем для отображения
-    local themeList = {}
-    for themeName, _ in pairs(self.Themes) do
-        table.insert(themeList, themeName)
+    -- Собираем список всех названий доступных пресетов
+    local themeNames = {}
+    for name, _ in pairs(self.Themes) do
+        table.insert(themeNames, name)
     end
     
-    -- Допущение: в вашей библиотеке планируется элемент выбора/дропдаун, либо можно использовать связку кнопок/слайдеров.
-    -- Ниже пример добавления быстрых переключателей основных тем
-    for _, name in ipairs(themeList) do
-        -- Пример интеграции через функционал кнопок или тогглов, если они будут расширены в вашей библиотеке.
-        -- На данный момент, используя существующие методы группы (AddToggle):
-        Group:AddToggle("Theme_" .. name, {
-            Text = "Enable " .. name .. " Theme",
+    -- Сортируем для ровного отображения (опционально)
+    table.sort(themeNames)
+    
+    -- Создаем тогглы переключения для каждого пресета
+    for _, name in ipairs(themeNames) do
+        local toggleIndex = "ThemeToggle_" .. name
+        
+        Group:AddToggle(toggleIndex, {
+            Text = name .. " Style",
             Default = (self.CurrentTheme == name),
             Callback = function(state)
                 if state then
                     self:ApplyTheme(name)
                     self:SaveTheme()
+                    
+                    -- Сбрасываем визуальное состояние остальных тогглов тем
+                    for _, otherName in ipairs(themeNames) do
+                        if otherName ~= name and self.Library.Toggles["ThemeToggle_" .. otherName] then
+                            -- Отключаем флаг без вызова повторного коллбека, чтобы избежать зацикливания твинов
+                            self.Library.Toggles["ThemeToggle_" .. otherName]:SetValue(false)
+                        end
+                    end
                 end
             end
         })
