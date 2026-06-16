@@ -11,14 +11,16 @@ local KronexLib = {
     Toggles = {},
     ShowToggleFrameInKeybinds = true,
     ShowCustomCursor = true,
-    NotifySide = "Left"
+    NotifySide = "Left",
+    ThemeManager = nil -- Ссылка на объект ThemeManager
 }
 
--- Таблица для хранения иконок из Rayfield
+-- =============================================================================
+-- ИНТЕГРАЦИЯ БАЗЫ ИКОНОК LUCIDE (RAYFIELD FETCH)
+-- =============================================================================
 local LucideDatabase = {}
 local DatabaseLoaded = false
 
--- Асинхронный фетч базы через loadstring (как в оригинале)
 task.spawn(function()
     local success, res = pcall(function()
         return game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/refs/heads/main/icons.lua")
@@ -28,10 +30,8 @@ task.spawn(function()
         local pcallLoad, loadedFunc = pcall(loadstring, res)
         if pcallLoad and type(loadedFunc) == "function" then
             local pcallExec, rawTable = pcall(loadedFunc)
-            -- У Rayfield все иконки лежат внутри подтаблицы ["48px"]
             if pcallExec and type(rawTable) == "table" and rawTable["48px"] then
                 for name, data in pairs(rawTable["48px"]) do
-                    -- На всякий случай переводим ключи в нижний регистр для удобного поиска
                     LucideDatabase[string.lower(name)] = {
                         Texture = "rbxassetid://" .. tostring(data[1]),
                         Offset = Vector2.new(data[2][1], data[2][2]),
@@ -44,7 +44,6 @@ task.spawn(function()
     DatabaseLoaded = true
 end)
 
--- Функция применения иконки к ImageLabel
 local function ApplyLucideIcon(imageLabel, iconName)
     local cleanName = string.lower(iconName or ""):gsub("%s+", "-")
     local iconData = LucideDatabase[cleanName]
@@ -54,13 +53,15 @@ local function ApplyLucideIcon(imageLabel, iconName)
         imageLabel.ImageRectOffset = iconData.Offset
         imageLabel.ImageRectSize = iconData.Size
     else
-        -- Дефолтный фоллбек (квадрат/бокс), пока база качается или если иконка не найдена
         imageLabel.Image = "rbxassetid://10734947426" 
         imageLabel.ImageRectOffset = Vector2.new(0, 0)
         imageLabel.ImageRectSize = Vector2.new(0, 0)
     end
 end
 
+-- =============================================================================
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- =============================================================================
 local function CreateUICorner(parent, radius)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, radius)
@@ -95,6 +96,16 @@ local function ApplySmoothDrag(frame)
     end)
 end
 
+-- Хелпер для быстрой регистрации UI элементов в менеджере тем
+local function RegisterTheme(instance, prop, key)
+    if KronexLib.ThemeManager and KronexLib.ThemeManager.RegisterObject then
+        KronexLib.ThemeManager:RegisterObject(instance, prop, key)
+    end
+end
+
+-- =============================================================================
+-- ОСНОВНЫЕ МЕТОДЫ ИНТЕРФЕЙСА
+-- =============================================================================
 function KronexLib:CreateWindow(cfg)
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "Kronex_Gui"
@@ -106,36 +117,36 @@ function KronexLib:CreateWindow(cfg)
     MainFrame.Name = "MainFrame"
     MainFrame.Size = UDim2.new(0, 850, 0, 520)
     MainFrame.Position = UDim2.new(0.5, -425, 0.5, -260)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(12, 11, 14)
     MainFrame.BorderSizePixel = 0
     MainFrame.ClipsDescendants = true
     MainFrame.Parent = ScreenGui
     CreateUICorner(MainFrame, 12)
     ApplySmoothDrag(MainFrame)
+    RegisterTheme(MainFrame, "BackgroundColor3", "MainBackground")
 
     local Sidebar = Instance.new("Frame")
     Sidebar.Name = "Sidebar"
     Sidebar.Size = UDim2.new(0, 210, 1, 0)
-    Sidebar.BackgroundColor3 = Color3.fromRGB(18, 16, 22)
     Sidebar.BorderSizePixel = 0
     Sidebar.Parent = MainFrame
     CreateUICorner(Sidebar, 12)
+    RegisterTheme(Sidebar, "BackgroundColor3", "SidebarBackground")
 
     local SidebarFix = Instance.new("Frame")
     SidebarFix.Size = UDim2.new(0, 15, 1, 0)
     SidebarFix.Position = UDim2.new(1, -15, 0, 0)
-    SidebarFix.BackgroundColor3 = Sidebar.BackgroundColor3
     SidebarFix.BorderSizePixel = 0
     SidebarFix.Parent = Sidebar
+    RegisterTheme(SidebarFix, "BackgroundColor3", "SidebarBackground")
 
     local Logo = Instance.new("TextLabel")
     Logo.Size = UDim2.new(1, 0, 0, 65)
     Logo.BackgroundTransparency = 1
     Logo.Text = cfg.Title or "kronex.fun"
-    Logo.TextColor3 = Color3.fromRGB(163, 133, 247)
     Logo.Font = Enum.Font.GothamBold
     Logo.TextSize = 24
     Logo.Parent = Sidebar
+    RegisterTheme(Logo, "TextColor3", "Accent")
 
     local TabContainer = Instance.new("ScrollingFrame")
     TabContainer.Size = UDim2.new(1, -12, 1, -140)
@@ -155,6 +166,7 @@ function KronexLib:CreateWindow(cfg)
     ContentArea.BackgroundTransparency = 1
     ContentArea.Parent = MainFrame
 
+    -- Overlay для биндов
     local BindOverlay = Instance.new("Frame")
     BindOverlay.Size = UDim2.new(1, 0, 1, 0)
     BindOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -166,29 +178,29 @@ function KronexLib:CreateWindow(cfg)
     local BindModal = Instance.new("Frame")
     BindModal.Size = UDim2.new(0, 280, 0, 120)
     BindModal.Position = UDim2.new(0.5, -140, 0.5, -60)
-    BindModal.BackgroundColor3 = Color3.fromRGB(22, 20, 26)
     BindModal.Parent = BindOverlay
     CreateUICorner(BindModal, 8)
+    RegisterTheme(BindModal, "BackgroundColor3", "SidebarBackground")
 
     local BindTitle = Instance.new("TextLabel")
     BindTitle.Size = UDim2.new(1, 0, 0, 40)
     BindTitle.BackgroundTransparency = 1
     BindTitle.Text = "Binding Module"
-    BindTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
     BindTitle.Font = Enum.Font.GothamBold
     BindTitle.TextSize = 14
     BindTitle.Parent = BindModal
+    RegisterTheme(BindTitle, "TextColor3", "Text")
 
     local BindPrompt = Instance.new("TextButton")
     BindPrompt.Size = UDim2.new(1, -40, 0, 40)
     BindPrompt.Position = UDim2.new(0, 20, 0, 50)
-    BindPrompt.BackgroundColor3 = Color3.fromRGB(32, 28, 38)
     BindPrompt.Text = "Press Key"
-    BindPrompt.TextColor3 = Color3.fromRGB(163, 133, 247)
     BindPrompt.Font = Enum.Font.GothamSemibold
     BindPrompt.TextSize = 12
     BindPrompt.Parent = BindModal
     CreateUICorner(BindPrompt, 6)
+    RegisterTheme(BindPrompt, "BackgroundColor3", "ElementsBackground")
+    RegisterTheme(BindPrompt, "TextColor3", "Accent")
 
     UserInputService.InputBegan:Connect(function(input, gpe)
         if not gpe and input.KeyCode == Enum.KeyCode.RightShift then
@@ -212,18 +224,17 @@ end
 function KronexLib:AddTab(name, iconName)
     local TabButton = Instance.new("TextButton")
     TabButton.Size = UDim2.new(1, 0, 0, 40)
-    TabButton.BackgroundColor3 = Color3.fromRGB(163, 133, 247)
     TabButton.BackgroundTransparency = 1
     TabButton.Text = ""
     TabButton.Parent = self.TabContainer
     CreateUICorner(TabButton, 6)
+    RegisterTheme(TabButton, "BackgroundColor3", "Accent")
 
     local Icon = Instance.new("ImageLabel")
     Icon.Size = UDim2.new(0, 18, 0, 18)
     Icon.Position = UDim2.new(0, 12, 0.5, -9)
     Icon.BackgroundTransparency = 1
     Icon.Parent = TabButton
-    
     ApplyLucideIcon(Icon, iconName)
 
     local Label = Instance.new("TextLabel")
@@ -231,11 +242,11 @@ function KronexLib:AddTab(name, iconName)
     Label.Position = UDim2.new(0, 40, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = name
-    Label.TextColor3 = Color3.fromRGB(150, 150, 150)
     Label.Font = Enum.Font.GothamSemibold
     Label.TextSize = 14
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = TabButton
+    RegisterTheme(Label, "TextColor3", "SubText")
 
     local Page = Instance.new("ScrollingFrame")
     Page.Size = UDim2.new(1, 0, 1, 0)
@@ -256,13 +267,10 @@ function KronexLib:AddTab(name, iconName)
     local function activate()
         if KronexLib.CurrentTab then
             TweenService:Create(KronexLib.CurrentTab.Button, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(KronexLib.CurrentTab.Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(150, 150, 150)}):Play()
-            TweenService:Create(KronexLib.CurrentTab.Label, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(150, 150, 150)}):Play()
+            TweenService:Create(KronexLib.CurrentTab.Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(255, 255, 255)}):Play()
             KronexLib.CurrentTab.Page.Visible = false
         end
         TweenService:Create(TabButton, TweenInfo.new(0.2), {BackgroundTransparency = 0.9}):Play()
-        TweenService:Create(Icon, TweenInfo.new(0.2), {ImageColor3 = Color3.fromRGB(163, 133, 247)}):Play()
-        TweenService:Create(Label, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(245, 245, 245)}):Play()
         
         Page.Position = UDim2.new(0, 30, 0, 0)
         Page.Visible = true
@@ -275,16 +283,16 @@ function KronexLib:AddTab(name, iconName)
     
     TabButton.MouseEnter:Connect(function()
         if not KronexLib.CurrentTab or KronexLib.CurrentTab.Button ~= TabButton then
-            TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(200, 200, 200)}):Play()
+            TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
         end
     end)
     TabButton.MouseLeave:Connect(function()
         if not KronexLib.CurrentTab or KronexLib.CurrentTab.Button ~= TabButton then
-            TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(150, 150, 150)}):Play()
+            local targetColor = (KronexLib.ThemeManager and KronexLib.ThemeManager.Themes[KronexLib.ThemeManager.CurrentTheme].SubText) or Color3.fromRGB(150, 150, 150)
+            TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = targetColor}):Play()
         end
     end)
 
-    -- Когда база загрузилась, обновляем иконку вкладки на правильный спрайт
     task.spawn(function()
         while not DatabaseLoaded do task.wait(0.1) end
         ApplyLucideIcon(Icon, iconName)
@@ -293,22 +301,25 @@ function KronexLib:AddTab(name, iconName)
 
     local TabObj = {Page = Page, Main = self}
 
+    -- =============================================================================
+    -- КАРТОЧКИ ГРУПП (GROUPBOX)
+    -- =============================================================================
     function TabObj:AddGroupbox(groupName)
         local Card = Instance.new("Frame")
-        Card.BackgroundColor3 = Color3.fromRGB(18, 16, 22)
         Card.Parent = Page
         CreateUICorner(Card, 8)
+        RegisterTheme(Card, "BackgroundColor3", "CardBackground")
 
         local Header = Instance.new("TextLabel")
         Header.Size = UDim2.new(1, -40, 0, 35)
         Header.Position = UDim2.new(0, 12, 0, 0)
         Header.BackgroundTransparency = 1
         Header.Text = groupName
-        Header.TextColor3 = Color3.fromRGB(240, 240, 240)
         Header.Font = Enum.Font.GothamBold
         Header.TextSize = 14
         Header.TextXAlignment = Enum.TextXAlignment.Left
         Header.Parent = Card
+        RegisterTheme(Header, "TextColor3", "Text")
 
         local ElementsList = Instance.new("ScrollingFrame")
         ElementsList.Size = UDim2.new(1, -10, 1, -40)
@@ -323,6 +334,9 @@ function KronexLib:AddTab(name, iconName)
 
         local GroupObj = {}
 
+        -- =============================================================================
+        -- ЭЛЕМЕНТ: TOGGLE
+        -- =============================================================================
         function GroupObj:AddToggle(idx, cfg)
             local ToggleData = {Value = cfg.Default or false, Type = "Toggle", ChangedCallbacks = {}}
             if cfg.Callback then table.insert(ToggleData.ChangedCallbacks, cfg.Callback) end
@@ -343,18 +357,18 @@ function KronexLib:AddTab(name, iconName)
             Label.Position = UDim2.new(0, 8, 0, 0)
             Label.BackgroundTransparency = 1
             Label.Text = cfg.Text or idx
-            Label.TextColor3 = Color3.fromRGB(170, 170, 170)
             Label.Font = Enum.Font.GothamMedium
             Label.TextSize = 13
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = ToggleFrame
+            RegisterTheme(Label, "TextColor3", "SubText")
 
             local Box = Instance.new("Frame")
             Box.Size = UDim2.new(0, 24, 0, 14)
             Box.Position = UDim2.new(1, -32, 0.5, -7)
-            Box.BackgroundColor3 = Color3.fromRGB(36, 32, 44)
             Box.Parent = ToggleFrame
             CreateUICorner(Box, 7)
+            RegisterTheme(Box, "BackgroundColor3", "ElementsBackground")
 
             local Dot = Instance.new("Frame")
             Dot.Size = UDim2.new(0, 10, 0, 10)
@@ -364,7 +378,9 @@ function KronexLib:AddTab(name, iconName)
             CreateUICorner(Dot, 5)
 
             local function update()
-                local targetColor = ToggleData.Value and Color3.fromRGB(163, 133, 247) or Color3.fromRGB(36, 32, 44)
+                local currentTheme = KronexLib.ThemeManager and KronexLib.ThemeManager.Themes[KronexLib.ThemeManager.CurrentTheme]
+                
+                local targetColor = ToggleData.Value and (currentTheme and currentTheme.Accent or Color3.fromRGB(163, 133, 247)) or (currentTheme and currentTheme.ElementsBackground or Color3.fromRGB(36, 32, 44))
                 local targetDotColor = ToggleData.Value and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 150, 150)
                 local targetPos = ToggleData.Value and UDim2.new(0, 12, 0.5, -5) or UDim2.new(0, 2, 0.5, -5)
                 
@@ -382,18 +398,14 @@ function KronexLib:AddTab(name, iconName)
                 update()
             end)
 
-            ClickBtn.MouseEnter:Connect(function()
-                TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(220, 220, 220)}):Play()
-            end)
-            ClickBtn.MouseLeave:Connect(function()
-                TweenService:Create(Label, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(170, 170, 170)}):Play()
-            end)
-
             task.spawn(update)
             KronexLib.Toggles[idx] = ToggleData
             return ToggleData
         end
 
+        -- =============================================================================
+        -- ЭЛЕМЕНТ: SLIDER
+        -- =============================================================================
         function GroupObj:AddSlider(idx, cfg)
             local SliderData = {Value = cfg.Default or cfg.Min, Type = "Slider", ChangedCallbacks = {}}
             if cfg.Callback then table.insert(SliderData.ChangedCallbacks, cfg.Callback) end
@@ -408,36 +420,36 @@ function KronexLib:AddTab(name, iconName)
             Label.Position = UDim2.new(0, 8, 0, 2)
             Label.BackgroundTransparency = 1
             Label.Text = cfg.Text or idx
-            Label.TextColor3 = Color3.fromRGB(160, 160, 160)
             Label.Font = Enum.Font.GothamMedium
             Label.TextSize = 12
             Label.TextXAlignment = Enum.TextXAlignment.Left
             Label.Parent = SliderFrame
+            RegisterTheme(Label, "TextColor3", "SubText")
 
             local ValueLabel = Instance.new("TextLabel")
             ValueLabel.Size = UDim2.new(0, 50, 0, 20)
             ValueLabel.Position = UDim2.new(1, -58, 0, 2)
             ValueLabel.BackgroundTransparency = 1
             ValueLabel.Text = tostring(SliderData.Value)
-            ValueLabel.TextColor3 = Color3.fromRGB(163, 133, 247)
             ValueLabel.Font = Enum.Font.GothamBold
             ValueLabel.TextSize = 12
             ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
             ValueLabel.Parent = SliderFrame
+            RegisterTheme(ValueLabel, "TextColor3", "Accent")
 
             local SliderBar = Instance.new("TextButton")
             SliderBar.Size = UDim2.new(1, -16, 0, 4)
             SliderBar.Position = UDim2.new(0, 8, 0, 32)
-            SliderBar.BackgroundColor3 = Color3.fromRGB(36, 32, 44)
             SliderBar.Text = ""
             SliderBar.Parent = SliderFrame
             CreateUICorner(SliderBar, 2)
+            RegisterTheme(SliderBar, "BackgroundColor3", "ElementsBackground")
 
             local SliderFill = Instance.new("Frame")
             SliderFill.Size = UDim2.new(0, 0, 1, 0)
-            SliderFill.BackgroundColor3 = Color3.fromRGB(163, 133, 247)
             SliderFill.Parent = SliderBar
             CreateUICorner(SliderFill, 2)
+            RegisterTheme(SliderFill, "BackgroundColor3", "Accent")
 
             local SliderBtn = Instance.new("Frame")
             SliderBtn.Size = UDim2.new(0, 10, 0, 10)
